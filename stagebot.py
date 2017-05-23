@@ -120,36 +120,43 @@ class SlackBot:
         self.send("Downloading %s ..." % download)
         urllib.urlretrieve(download, "lila-server.tar.gz")
 
-        # 2. Download assets
-        download = "%s/lila-assets-%s.tar.gz" % (self.config.get("s3", "bucket"), args.branch)
-        self.send("Downloading %s ..." % download)
-        urllib.urlretrieve(download, "lila-assets.tar.gz")
+        asset_download = "%s/lila-assets-%s.tar.gz" % (self.config.get("s3", "bucket"), args.branch)
+        self.send("Checking %s ..." % asset_download)
+        # TODO test with HEAD request urllib.urlretrieve(download, "lila-server.tar.gz")
+
 
         with tarfile.open("lila-server.tar.gz") as tar:
-            # 3. Peek server
+            # 2. Peek server
             with tar.extractfile("commit.txt") as commit_file:
                 sha, message = commit_file.readline().decode("utf-8").strip().split(None, 1)
 
             self.send("Deploying server: https://github.com/%s/commit/%s (`%s`) ..." % (
                 self.config.get("github", "slug"), sha, message))
 
-            # 4. Extract server
+            # 3. Extract server
             app_files = [t for t in tar.getmembers() if make_relative("target/universal/stage/", t)]
             tar.extractall(self.config.get("deploy", "app"), members=app_files)
 
+        # 4. Kick off restart
+        sh(self.config.get("deploy", "appRestart"))
+
+        # 5. Download assets
+        self.send("Downloading %s ..." % asset_download)
+        urllib.urlretrieve(download, "lila-assets.tar.gz")
+
         with tarfile.open("lila-assets.tar.gz") as tar:
-            # 5. Peek assets
+            # 6. Peek assets
             with tar.extractfile("commit.txt") as commit_file:
                 sha, message = commit_file.readline().decode("utf-8").strip().split(None, 1)
 
             self.send("Deploying assets: https://github.com/%s/commit/%s (`%s`) ..." % (
                 self.config.get("github", "slug"), sha, message))
 
-            # 6. Extract assets.
+            # 7. Extract assets.
             asset_files = [t for t in tar.getmembers() if make_relative("public/", t)]
             tar.extractall(self.config.get("deploy", "assets"), members=asset_files)
 
-        # 7. Post
+        # 9. Post
         sh(self.config.get("deploy", "post"))
 
         end_time = time.time()
